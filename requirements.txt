@@ -1,0 +1,6 @@
+pexpect
+pycrypto
+requests
+pyopenssl
+pefile
+impacket

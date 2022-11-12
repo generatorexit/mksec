@@ -1,0 +1,228 @@
+#!/usr/bin/env python3
+# coding=utf-8
+import os
+import re
+import shutil
+import subprocess
+import sys
+
+# import main core functionality into MKSEC
+import src.core.core_mksec as core
+
+# python2/3 compatibility
+# python3 renamed raw_input to input
+try:
+    input = raw_input
+except NameError:
+    pass
+
+# check which operating system
+operating_system = core.check_os()
+
+if operating_system == "posix":
+    # root check
+    if os.geteuid() != 0:
+        print("\n MK Security (MKSEC) - by Mert Karagoz (generatorexit)")
+        print("\n Not running as root. \n\nExiting the MK Security (MKSEC).\n")
+        core.exit_mksec()
+
+# if we are running in the path no need to change
+if os.path.isfile("mksec"):
+    pass
+
+# check where we are and load default directory
+elif os.path.isdir("/usr/share/mksec"):
+    if not os.path.isfile("mksec"):
+        os.chdir("/usr/share/mksec")
+    sys.path.append("/usr/share/mksec")
+
+# check where we are and load default directory
+elif os.path.isdir("/usr/share/mksec"):
+    if not os.path.isfile("mksec"):
+        os.chdir("/usr/share/mksec")
+        sys.path.append("/usr/share/mksec")
+
+# make sure the config file is located in /etc/mksec
+if not os.path.isdir("/etc/mksec/"):
+    os.makedirs("/etc/mksec/")
+    shutil.copyfile("src/core/config.baseline", "/etc/mksec/set.config")
+
+if not os.path.isfile("/etc/mksec/set.config"):
+    shutil.copyfile("src/core/config.baseline", "/etc/mksec/set.config")
+
+# here we check to ensure we have the latest version
+with open("/etc/mksec/set.config") as fileopen:
+    data = fileopen.read()
+
+if "CONFIG_VERSION=7.7.9" not in data:
+    print("[*] Overwriting old config for updates to MKSEC. Backing up your old one in /etc/mksec/")
+    shutil.move("/etc/mksec/set.config", "/etc/mksec/set.config.bak")
+    shutil.copyfile("src/core/config.baseline", "/etc/mksec/set.config")
+
+# import after config checks have been properly created
+from src.core.menu import text
+from src.core.update_config import update_config
+
+
+if os.path.isfile(os.path.join(core.userconfigpath, "version.lock")):
+    os.remove(os.path.join(core.userconfigpath, "version.lock"))
+
+# check directory and make it
+if not os.path.isdir("src/logs/"):
+    os.makedirs("src/logs/")
+
+# check mksec logfile
+if not os.path.isfile("src/logs/mksec.log"):
+    # create new log
+    with open("src/logs/mksec.log", "w") as filewrite:
+        filewrite.write("")
+
+# use ~/.mksec
+if operating_system == "posix":
+    if not os.path.isdir(core.userconfigpath):
+        # create the mksec variables
+        os.makedirs(core.userconfigpath)
+        # if for some reason it failed to pull the path
+        userdir = os.path.join(os.path.expanduser('~'), '.mksec')
+        if not os.path.isdir(userdir):
+            os.makedirs(userdir)
+
+if not os.path.isdir(os.path.join(core.userconfigpath, "reports")):
+    os.makedirs(os.path.join(core.userconfigpath, "reports"))
+
+# check to see if we have python-pycrypto
+# try:
+#     from Crypto.Cipher import AES
+# except ImportError:
+#     print("[!] The python-pycrypto python module not installed. You will lose the ability to use multi-pyinjector.")
+#     pass
+
+# update the main config per load
+update_config()
+
+# chmod routine
+if operating_system == "posix":
+    # change permissions
+    subprocess.Popen("chmod +x mksecupdate;"
+                     "chmod +x setup.py;",
+                    #  "chmod +x src/payloads/mksec_payloads/listener.py",
+                     stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=True)
+
+dns = core.check_config("DNS_SERVER=")
+if dns.lower() == "on":
+    import src.core.minifakedns
+    from src.core.core_mksec import detect_public_ip
+    src.core.minifakedns.start_dns_server(detect_public_ip())
+
+# remove old files
+for root, dirs, files in os.walk(core.userconfigpath):
+    for f in files:
+        try:
+            match = re.search(".svn|entries|all-wcprops|props|text-base|prop-base|tmp", f)
+            if not match:
+                os.unlink(os.path.join(root, f))
+
+        # if they are being used then ignore
+        except:
+            pass
+    # loop through all the directories
+    for d in dirs:
+        try:
+            match = re.search(".svn|entries|all-wcprops|props|text-base|prop-base|tmp", d)
+            if not match:
+                shutil.rmtree(os.path.join(root, d))
+        except:
+            pass
+
+# if there isn't a set_config.py file yet, create one
+if not os.path.isfile("/etc/mksec/set_config.py"):
+    update_config()
+
+define_version = core.get_version()
+
+# create the set.options routine
+with open(os.path.join(core.userconfigpath, "set.options"), "w") as filewrite:
+    filewrite.write("{This is the main MKSEC configuration file for all options used in MKSEC}\n")
+
+try:
+    # initial user menu
+    if not os.path.isfile("src/agreement"):
+        with open("readme/LICENSE") as fileopen:
+            for line in fileopen:
+                print((line.rstrip()))
+
+        print("{0}mksec is designed purely"
+              " for good and not evil. If you are planning on "
+              "using this tool for malicious purposes that are "
+              "not authorized by the company you are performing "
+              "assessments for, you are violating the terms of "
+              "service and license of this toolset. By hitting "
+              "yes (only one time), you agree to the terms of "
+              "service and that you will only use this tool for "
+              "lawful purposes only.{1}".format(core.bcolors.RED, core.bcolors.ENDC))
+        print(core.bcolors.GREEN)
+        choice = input("\nDo you agree to the terms of service [y/n]: ")
+        choice += " "  # b/c method below
+        if choice[0].lower() == "y":
+            with open("src/agreement", "w") as filewrite:
+                filewrite.write("user accepted")
+            print(core.bcolors.ENDC)
+        else:
+            print(core.bcolors.ENDC + "[!] Exiting the mksec, have a nice day." + core.bcolors.ENDC)
+            sys.exit()
+
+    while True:
+        core.show_banner(define_version, '1')
+        show_main_menu = core.create_menu(text.main_text, text.main_menu)
+
+        # special case of list item 99
+        print('\n  99) Exit the mksec\n')
+
+        # main core menu
+        main_menu_choice = (input(core.setprompt("0", "")))
+
+        # quit out
+        if main_menu_choice == 'exit' or main_menu_choice == "99" or main_menu_choice == "quit":
+            core.exit_mksec()
+
+        # load set
+        if main_menu_choice == '1':
+            try:
+                core.module_reload(src.core.set)
+            except:
+                import src.core.set
+
+        # load fasttrack
+        if main_menu_choice == '2':
+            try:
+                core.module_reload(src.core.fasttrack)
+            except:
+                import src.core.fasttrack
+
+        # third party modules
+        if main_menu_choice == '3':
+            try:
+                core.module_reload(src.core.module_handler)
+            except:
+                import src.core.module_handler
+
+        # update set
+        if main_menu_choice == '4':
+            core.update_set()
+
+        # credits
+        if main_menu_choice == '5':
+            update_config()
+
+        # update config
+        if main_menu_choice == '6':
+            core.help_menu()
+
+# handle keyboard interrupts
+except KeyboardInterrupt:
+    print("\n\n[*] Control-C detected. Exiting the mksec")
+
+# handle exceptions
+except Exception as error:
+    core.log(error)
+    print("\n\n[!] Something went wrong, printing the error: " + str(error))
