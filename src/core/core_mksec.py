@@ -438,7 +438,7 @@ def show_banner(define_version, graphic):
                 try:
 
                     url = (
-                        'https://raw.githubusercontent.com/generatorexit/mksec/master/src/core/mksec.version')
+                        'https://raw.githubusercontent.com/generatorexit/mksec/main/src/core/mksec.version')
                     version = urlopen(url).read().rstrip().decode('utf-8')
                     filewrite = open(userconfigpath + "version.lock", "w")
                     filewrite.write(version)
